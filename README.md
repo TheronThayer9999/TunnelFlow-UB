@@ -11,8 +11,12 @@ Run **Ollama** on Google Colab and expose it to the internet with a **Bore** tun
    https://colab.research.google.com/github/TheronThayer9999/TunnelFlow-UB/blob/master/TunnelFlow-UB.ipynb
    ```
 
-2. **Runtime → Run all** (`Ctrl+F9`).
-3. Copy the `http://bore.pub:<PORT>` URL printed by cell 1 and start using it.
+2. Turn on the free GPU once (Colab cannot do this from code): **Runtime → Change runtime type → `T4 GPU` → Save**
+3. **Connect**, then press ▶ on cell 1 (or **Runtime → Run all**). One cell sets everything up: Bore + Ollama, tunnel,
+   port verification, model pull, and a live call through the public URL.
+4. Copy the `http://bore.pub:<PORT>` URL printed at the end.
+
+Without a GPU the notebook still works — it warns and falls back to a small CPU model (`qwen2.5:0.5b`).
 
 ## Files
 
