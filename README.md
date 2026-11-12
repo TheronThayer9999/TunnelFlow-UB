@@ -18,6 +18,34 @@ Run **Ollama** on Google Colab and expose it to the internet with a **Bore** tun
 
 Without a GPU the notebook still works — it warns and falls back to a small CPU model (`qwen2.5:0.5b`).
 
+## Screenshots
+
+### The bug: the old script printed the year as the port
+
+`2026-11-12T09:41:07Z` → `grep -o '[0-9]{4,5}'` matched **2026**, so the guide told you to call
+`http://bore.pub:2026`, which is not your tunnel.
+
+![Old script printing 2026 instead of the real port](docs/img/01-before-wrong-port-2026.png)
+
+### The fix: read the port that follows `bore.pub:`
+
+Real `bore.log` from the Colab run (the timestamp still says 2026, the port is **9368**):
+
+![bore.log showing listening at bore.pub:9368](docs/img/03-bore-log-correct-port.png)
+
+### Proven end to end
+
+`curl http://bore.pub:9368/api/tags` from any machine — the tunnel really serves the model:
+
+![bore.pub API returning the model list](docs/img/04-bore-pub-api-tags.png)
+
+### Turning on the free T4
+
+**Runtime → Change runtime type → T4 GPU → Save** (Colab has no way to do this from code):
+
+![Change runtime type dialog with T4 GPU selected](docs/img/02-runtime-type-t4-gpu.png)
+
+
 ## Files
 
 | File | Purpose |
