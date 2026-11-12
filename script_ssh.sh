@@ -1,54 +1,76 @@
+%%bash
+# Set the root password here (change "MySecurePass123" to your own password)
+ROOT_PASSWORD="MySecurePass123"
 
-----------------------
-ssh 
------------------------
-
-
-
-#!/bin/bash
 echo "=================================================="
-echo "1. Đang cài đặt SSH Server..."
+echo "1. Installing the SSH server..."
 echo "=================================================="
 apt-get update -qq && apt-get install -y -qq openssh-server > /dev/null 2>&1
-echo "✅ Đã cài đặt SSH."
+echo "openssh-server installed."
 
 echo "=================================================="
-echo "2. Đặt mật khẩu cho user root"
+echo "2. Setting the root password (non-interactive)..."
 echo "=================================================="
-echo "⚠️  Hãy nhập mật khẩu mới 2 lần (ví dụ: MySecurePass123)"
-passwd root
+echo "root:${ROOT_PASSWORD}" | chpasswd
+echo "Root password set."
 
 echo "=================================================="
-echo "3. Cấu hình SSH cho phép đăng nhập từ xa..."
+echo "3. Configuring SSH to allow remote login..."
 echo "=================================================="
-# Lệnh sed tối ưu: tự động bỏ dấu # (nếu có) và set thành yes
+# Required directories for sshd inside a container/Colab environment
+mkdir -p /run/sshd
+
+# Comment out the leading # (if any) and set the value to yes
 sed -i 's/#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
 sed -i 's/#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
-# Tạo host keys (bắt buộc trong môi trường container/Colab)
+# Host keys are mandatory in a container/Colab environment
 ssh-keygen -A > /dev/null 2>&1
 
-echo " Kiểm tra lại cấu hình:"
+echo "Verify the settings:"
 grep -E "PermitRootLogin|PasswordAuthentication" /etc/ssh/sshd_config
 
 echo "=================================================="
-echo "4. Khởi động SSH Server..."
+echo "4. Starting the SSH server..."
 echo "=================================================="
-# Dắt các tiến trình cũ
+# Stop old processes
 pkill sshd || true
 sleep 1
 
-# Khởi động trực tiếp daemon
+# Start the daemon directly
 /usr/sbin/sshd
 
 echo "=================================================="
-echo "5. Kiểm tra cổng SSH đang lắng nghe..."
+echo "5. Checking which port sshd listens on..."
 echo "=================================================="
-ss -tlnp | grep sshd
+ss -tlnp | grep sshd || echo "WARN: sshd is not listening yet, check the log."
 
 echo "=================================================="
-echo "🎉 HOÀN TẤT!"
-echo "💡 Lưu ý: Colab thường chạy SSH trên cổng 2222."
-echo "👉 Bước tiếp theo, hãy chạy lệnh Bore:"
-echo "   bore local 2222 --to bore.pub"
+echo "6. Opening a Bore tunnel for port 22..."
+echo "=================================================="
+pkill -f "bore local 22 --to" 2>/dev/null || true   # only the old SSH tunnel
+rm -f bore_ssh.log
+nohup bore local 22 --to bore.pub > bore_ssh.log 2>&1 &
+
+SSH_PORT=""
+for _ in $(seq 1 30); do
+    SSH_PORT=$(sed 's/\x1b\[[0-9;]*m//g' bore_ssh.log 2>/dev/null \
+               | tr -d '\r' \
+               | grep -oE 'bore\.pub:[0-9]{1,5}' \
+               | sed 's/.*://' \
+               | tail -n 1) || true
+    if [ -n "$SSH_PORT" ]; then
+        break
+    fi
+    sleep 1
+done
+
+if [ -n "$SSH_PORT" ]; then
+    echo "SSH PUBLIC PORT: $SSH_PORT"
+    echo "Connect with: ssh -p ${SSH_PORT} root@bore.pub"
+    echo "Password:     ${ROOT_PASSWORD}"
+else
+    echo "WARN: could not read the SSH port yet. Raw log (wait a few seconds):"
+    sed 's/\x1b\[[0-9;]*m//g' bore_ssh.log | tail -n 20
+fi
 echo "=================================================="
