@@ -1,9 +1,9 @@
 # TunnelFlow-UB
 
-Run **Ollama** on Google Colab and expose it to the internet with a **Bore** tunnel — one run and you get a public
-`http://bore.pub:<PORT>` endpoint you can call from anywhere.
+Run **Ollama** on Google Colab and expose it with a **Bore** tunnel: one cell, and you get a working
+`http://bore.pub:<PORT>` endpoint.
 
-## Quick start
+## Run it
 
 1. Open the notebook in Colab:
 
@@ -11,90 +11,42 @@ Run **Ollama** on Google Colab and expose it to the internet with a **Bore** tun
    https://colab.research.google.com/github/TheronThayer9999/TunnelFlow-UB/blob/master/TunnelFlow-UB.ipynb
    ```
 
-2. Turn on the free GPU once (Colab cannot do this from code): **Runtime → Change runtime type → `T4 GPU` → Save**
-3. **Connect**, then press ▶ on cell 1 (or **Runtime → Run all**). One cell sets everything up: Bore + Ollama, tunnel,
-   port verification, model pull, and a live call through the public URL.
-4. Copy the `http://bore.pub:<PORT>` URL printed at the end.
+2. Runtime → Change runtime type → **T4 GPU** → Save (one time; Colab cannot do it from code).
+3. Connect, then press ▶ on the setup cell (or **Run all**). It installs Bore + Ollama, opens the tunnel, verifies the
+   port with `curl`, pulls the model and calls it through the public URL.
+4. Use the `API: http://bore.pub:<PORT>` line it prints.
 
-Without a GPU the notebook still works — it warns and falls back to a small CPU model (`qwen2.5:0.5b`).
-
-## Screenshots
-
-### The bug: the old script printed the year as the port
-
-`2026-11-12T09:41:07Z` → `grep -o '[0-9]{4,5}'` matched **2026**, so the guide told you to call
-`http://bore.pub:2026`, which is not your tunnel.
-
-![Old script printing 2026 instead of the real port](docs/img/01-before-wrong-port-2026.png)
-
-### The fix: read the port that follows `bore.pub:`
-
-Real `bore.log` from the Colab run (the timestamp still says 2026, the port is **9368**):
-
-![bore.log showing listening at bore.pub:9368](docs/img/03-bore-log-correct-port.png)
-
-### Proven end to end
-
-`curl http://bore.pub:9368/api/tags` from any machine — the tunnel really serves the model:
-
-![bore.pub API returning the model list](docs/img/04-bore-pub-api-tags.png)
-
-### Turning on the free T4
-
-**Runtime → Change runtime type → T4 GPU → Save** (Colab has no way to do this from code):
-
-![Change runtime type dialog with T4 GPU selected](docs/img/02-runtime-type-t4-gpu.png)
-
+No GPU? The cell warns and falls back to `qwen2.5:0.5b` on CPU.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `TunnelFlow-UB.ipynb` | Main notebook: installs Bore + Ollama, opens the tunnel, verifies it, pulls `tranhuythang9999/deepseek-v4-pro-9b-heretic:probe`, ships runnable sample clients (Python + curl) and an optional SSH cell |
-| `script_tunnel.sh` | Plain `%%bash` cell with the same Ollama + tunnel setup |
-| `script_ssh.sh` | SSH server on port 22 plus a second Bore tunnel for `ssh -p <PORT> root@bore.pub` |
+| `TunnelFlow-UB.ipynb` | Main notebook: setup, optional SSH cell, runnable Python client, screenshots |
+| `script_tunnel.sh` | Same Ollama + tunnel setup as a single `%%bash` cell |
+| `script_ssh.sh` | SSH server + a second Bore tunnel for `ssh -p <PORT> root@bore.pub` |
 
-## Fixed: wrong port printed by the old script
+## The bug that is fixed here
 
-Bore v0.6.0 logs with a timestamp, so the old extraction grabbed the **year** instead of the port:
+Bore v0.6.0 logs a timestamp, so the old extraction read the **year** as the port:
 
 ```text
-log line : 2026-11-12T09:41:07.123Z  INFO bore_cli::client: listening at bore.pub:41234
-old code : grep -o '[0-9]\{4,5\}' | head -n 1              -> 2026   (WRONG)
-new code : grep -oE 'bore\.pub:[0-9]{1,5}' | sed 's/.*://' -> 41234  (correct)
+log : 2026-11-12T04:19:26.497610Z  INFO bore_cli::client: listening at bore.pub:9368
+old : grep -o '[0-9]\{4,5\}' | head -n 1               -> 2026   (wrong)
+new : grep -oE 'bore\.pub:[0-9]{1,5}' | sed 's/.*://'  -> 9368   (correct)
 ```
 
-Other fixes in this repo:
+![old script printing 2026](docs/img/01-before-wrong-port-2026.png)
 
-- no more fixed `sleep 4`: the script waits up to 30 s for the port to appear (Colab can be slow);
-- the port is **verified with `curl`** through `bore.pub` before it is printed;
-- ANSI colour codes and `\r` are stripped from the log before parsing;
-- `set -e` no longer kills the script silently when the log has no match;
-- tunnel cleanup is per-port (`pkill -f "bore local 11434 --to"`), so opening the SSH tunnel no longer kills the Ollama
-  tunnel (and vice versa).
+![bore.log with the correct port](docs/img/03-bore-log-correct-port.png)
 
-## Calling the endpoint
+![public endpoint answering](docs/img/04-bore-pub-api-tags.png)
 
-```bash
-curl http://bore.pub:<PORT>/api/tags
-
-curl http://bore.pub:<PORT>/api/generate \
-  -d '{"model":"tranhuythang9999/deepseek-v4-pro-9b-heretic:probe","prompt":"hello","stream":false}'
-```
-
-```python
-from openai import OpenAI
-
-client = OpenAI(base_url="http://bore.pub:<PORT>/v1", api_key="ollama")
-print(client.chat.completions.create(
-    model="tranhuythang9999/deepseek-v4-pro-9b-heretic:probe",
-    messages=[{"role": "user", "content": "Hello!"}],
-).choices[0].message.content)
-```
+Other fixes: wait loop instead of `sleep 4`, ANSI/`\r` stripped, `set -e` safe, the port is verified with `curl` before
+it is printed, and tunnel cleanup is per-port so the SSH tunnel never kills the Ollama tunnel.
 
 ## Notes
 
-- A free Colab runtime stops after ~12 h or when idle for a while → re-run the notebook, the port changes.
-- Free `bore.pub` assigns a **random** port each run. Pass `--port <n>` to `bore local` if you need a fixed one.
-- The SSH cell publishes `root` with a plain password (`MySecurePass123` by default) to the public internet — change it
-  or leave `ENABLE_SSH=0`.
+- A free Colab runtime stops after ~12 h or when idle → re-run the cell, the port changes.
+- `bore.pub` assigns a random port; add `--port <n>` to `bore local` if you need a fixed one.
+- The SSH cell publishes `root` with a plain password (`MySecurePass123` by default) — change it or set `ENABLE_SSH=0`.
